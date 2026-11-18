@@ -1,7 +1,7 @@
 {
   "name": "proxymcp",
   "version": "0.1.0",
-  "description": "The local-first API gateway and context firewall for AI coding agents",
+  "description": "Zero-config local proxy for Claude Code, Cursor, and AGY that cuts prompt token costs by up to 87%, maintains byte-static cache prefixes, and prevents catastrophic commands",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
