@@ -104,4 +104,76 @@ describe('ToolPruner', () => {
     expect(result.omittedToolNames).toContain('deploy_cluster');
     expect(result.omittedToolNames).toContain('send_newsletter');
   });
+
+  it('prunes OpenAI function formatted tools and preserves schema format', () => {
+    const pruner = new ToolPruner({ maxActiveTools: 2 });
+
+    const openAiTools = [
+      {
+        type: 'function',
+        function: {
+          name: 'bash',
+          description: 'Run shell commands and scripts in terminal environment',
+          parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'sql_runner',
+          description: 'Run SQL database queries on production Postgres cluster',
+          parameters: { type: 'object', properties: { sql: { type: 'string' }, timeout: { type: 'number' } }, required: ['sql'] }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'slack_notifier',
+          description: 'Send alerts to team Slack channels with rich blocks and mention formatting',
+          parameters: { type: 'object', properties: { message: { type: 'string' }, channel: { type: 'string' }, blocks: { type: 'array' } } }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'jira_ticket',
+          description: 'Create Jira tickets for team sprint planning with assignees, labels, and issue types',
+          parameters: { type: 'object', properties: { title: { type: 'string' }, description: { type: 'string' }, project: { type: 'string' } } }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'k8s_cluster_manager',
+          description: 'Manage kubernetes namespaces, deployments, ingress rules, and replica pods',
+          parameters: { type: 'object', properties: { namespace: { type: 'string' }, action: { type: 'string' }, config: { type: 'object' } } }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'datadog_metrics_export',
+          description: 'Export telemetry metrics to datadog for latency and error rates',
+          parameters: { type: 'object', properties: { metric: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' } } }
+        }
+      }
+    ];
+
+    const result = pruner.pruneTools(openAiTools, 'Query the database using SQL');
+
+    expect(result.tokensSaved).toBeGreaterThan(0);
+    // Core tool bash preserved
+    expect(result.prunedTools.some((t) => t.function?.name === 'bash')).toBe(true);
+    // Matched tool sql_runner preserved
+    expect(result.prunedTools.some((t) => t.function?.name === 'sql_runner')).toBe(true);
+    // Meta tool generated in OpenAI function format
+    const metaTool = result.prunedTools.find((t) => t.function?.name === 'proxymcp_request_capability');
+    expect(metaTool).toBeDefined();
+    expect(metaTool?.type).toBe('function');
+    expect(metaTool?.function?.parameters?.properties).toBeDefined();
+    expect(result.omittedToolNames).toContain('jira_ticket');
+    expect(result.omittedToolNames).toContain('slack_notifier');
+    expect(result.omittedToolNames).toContain('k8s_cluster_manager');
+    expect(result.omittedToolNames).toContain('datadog_metrics_export');
+  });
 });
