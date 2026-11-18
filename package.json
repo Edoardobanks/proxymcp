@@ -1,0 +1,44 @@
+{
+  "name": "proxymcp",
+  "version": "0.1.0",
+  "description": "The local-first API gateway and context firewall for AI coding agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "proxymcp": "bin/proxymcp.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js start",
+    "dev": "tsx src/cli.ts start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "benchmark": "tsx scripts/benchmark.ts"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "context-firewall",
+    "prompt-caching",
+    "token-optimizer",
+    "reverse-proxy"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Edoardobanks/proxymcp.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.1",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}
