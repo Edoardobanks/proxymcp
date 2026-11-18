@@ -15,18 +15,20 @@ function printHelp() {
   printBanner();
   console.log(`Usage:
   proxymcp start [options]       Start the local reverse proxy
-  proxymcp exec -- <cmd> [args]  Start proxy and run command with ANTHROPIC_BASE_URL set
+  proxymcp exec -- <cmd> [args]  Start proxy and run command with ANTHROPIC_BASE_URL and OPENAI_BASE_URL set
   proxymcp mcp                   Run as an MCP stdio server (connect via agy mcp add)
   proxymcp stats                 View telemetry stats
   proxymcp --help                Show this help message
 
 Options:
-  --port <number>      Port to listen on (default: 8080)
-  --host <string>      Host to bind to (default: 127.0.0.1)
-  --upstream <url>     Upstream API (default: https://api.anthropic.com)
-  --mode <mode>        aggressive | balanced | passthrough (default: aggressive)
-  --mcp-config <path>  Path to MCP config file (auto-detects Claude Desktop by default)
-  --no-firewall        Disable destructive action firewall
+  --port <number>              Port to listen on (default: 8080)
+  --host <string>              Host to bind to (default: 127.0.0.1)
+  --upstream <url>             Upstream Anthropic API (default: https://api.anthropic.com)
+  --openai-upstream <url>      Upstream OpenAI API (default: https://api.openai.com)
+  --mode <mode>                aggressive | balanced | passthrough (default: aggressive)
+  --rc <path>                  Path to custom project config (.proxymcprc.json)
+  --mcp-config <path>          Path to MCP config file (auto-detects Claude Desktop by default)
+  --no-firewall                Disable destructive action firewall
 
 Examples:
   npx proxymcp start
@@ -48,8 +50,10 @@ export async function main() {
   let port = 8080;
   let host = '127.0.0.1';
   let upstream: string | undefined;
+  let openaiUpstream: string | undefined;
   let mode: 'aggressive' | 'balanced' | 'passthrough' | undefined;
   let mcpConfigPath: string | undefined;
+  let rcPath: string | undefined;
   let firewallEnabled = true;
 
   for (let i = 0; i < args.length; i++) {
@@ -62,8 +66,14 @@ export async function main() {
     } else if (args[i] === '--upstream' && args[i + 1]) {
       upstream = args[i + 1];
       i++;
+    } else if (args[i] === '--openai-upstream' && args[i + 1]) {
+      openaiUpstream = args[i + 1];
+      i++;
     } else if (args[i] === '--mode' && args[i + 1]) {
       mode = args[i + 1] as any;
+      i++;
+    } else if (args[i] === '--rc' && args[i + 1]) {
+      rcPath = args[i + 1];
       i++;
     } else if (args[i] === '--mcp-config' && args[i + 1]) {
       mcpConfigPath = args[i + 1];
@@ -89,14 +99,17 @@ export async function main() {
       port,
       host,
       upstreamBaseUrl: upstream,
+      openaiUpstreamBaseUrl: openaiUpstream,
       mode,
+      rcPath,
       firewallEnabled,
       mcpConfigPath: mcpConfig.sourcePath || undefined
     });
     await proxy.start();
 
     console.log(`\n\x1b[33mTo connect your coding agent, run in your terminal:\x1b[0m`);
-    console.log(`\x1b[1mexport ANTHROPIC_BASE_URL=http://${host}:${port}\x1b[0m\n`);
+    console.log(`\x1b[1mexport ANTHROPIC_BASE_URL=http://${host}:${port}\x1b[0m`);
+    console.log(`\x1b[1mexport OPENAI_BASE_URL=http://${host}:${port}/v1\x1b[0m\n`);
 
     const cleanup = async () => {
       console.log('\nStopping ProxyMCP...');
@@ -128,19 +141,22 @@ export async function main() {
       port,
       host,
       upstreamBaseUrl: upstream,
+      openaiUpstreamBaseUrl: openaiUpstream,
       mode,
+      rcPath,
       firewallEnabled,
       mcpConfigPath: mcpConfig.sourcePath || undefined
     });
     await proxy.start();
 
-    console.log(`🚀 Spawning child process: \x1b[36m${childCmd} ${childArgs.join(' ')}\x1b[0m with ANTHROPIC_BASE_URL set...`);
+    console.log(`🚀 Spawning child process: \x1b[36m${childCmd} ${childArgs.join(' ')}\x1b[0m with ANTHROPIC_BASE_URL & OPENAI_BASE_URL set...`);
 
     const child = spawn(childCmd, childArgs, {
       stdio: 'inherit',
       env: {
         ...process.env,
-        ANTHROPIC_BASE_URL: `http://${host}:${port}`
+        ANTHROPIC_BASE_URL: `http://${host}:${port}`,
+        OPENAI_BASE_URL: `http://${host}:${port}/v1`
       }
     });
 

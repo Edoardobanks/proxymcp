@@ -3,18 +3,28 @@ import https from 'node:https';
 import { URL } from 'node:url';
 import { ProxyConfig, loadConfig } from '../config/index.js';
 import { contextPruner, estimateTokens } from '../optimizer/context-pruner.js';
-import { toolPruner } from '../optimizer/tool-pruner.js';
-import { firewall } from '../firewall/guardrail.js';
+import { ToolPruner, toolPruner } from '../optimizer/tool-pruner.js';
+import { ContextFirewall } from '../firewall/guardrail.js';
 import { telemetry } from '../telemetry/logger.js';
 import { pipeSSEStream } from './streaming.js';
 import { renderDashboardHtml } from '../dashboard/html.js';
 
 export class ProxyServer {
   private config: ProxyConfig;
+  private firewall: ContextFirewall;
+  private toolPruner: ToolPruner;
   private server: http.Server | null = null;
 
   constructor(config?: Partial<ProxyConfig>) {
     this.config = loadConfig(config);
+    this.firewall = new ContextFirewall({
+      blockedCommands: this.config.blockedCommands,
+      customBlockedPatterns: this.config.customBlockedPatterns,
+      protectedPaths: this.config.protectedPaths,
+      allowedCommands: this.config.allowedCommands,
+      commandAllowlistOnly: this.config.commandAllowlistOnly
+    });
+    this.toolPruner = new ToolPruner({ maxActiveTools: this.config.maxActiveTools });
   }
 
   start(): Promise<void> {
@@ -25,7 +35,8 @@ export class ProxyServer {
 
       this.server.listen(this.config.port, this.config.host, () => {
         console.log(`\x1b[32m✔ ProxyMCP active on http://${this.config.host}:${this.config.port}\x1b[0m`);
-        console.log(`✔ Upstream API target: ${this.config.upstreamBaseUrl}`);
+        console.log(`✔ Upstream Anthropic target: ${this.config.upstreamBaseUrl}`);
+        console.log(`✔ Upstream OpenAI target: ${this.config.openaiUpstreamBaseUrl}`);
         console.log(`✔ Mode: \x1b[36m${this.config.mode}\x1b[0m | Firewall: \x1b[36m${this.config.firewallEnabled ? 'ON' : 'OFF'}\x1b[0m`);
         console.log(`✔ Live Web UI Dashboard: \x1b[35mhttp://${this.config.host}:${this.config.port}/dashboard\x1b[0m`);
         resolve();
@@ -132,11 +143,14 @@ export class ProxyServer {
       return;
     }
 
-    // Intercept POST /v1/messages
-    if (req.method === 'POST' && (url.startsWith('/v1/messages') || url.startsWith('/v1/chat/completions'))) {
+    // Intercept POST /v1/messages, /v1/chat/completions, and /chat/completions
+    const isOpenAI = url.startsWith('/v1/chat/completions') || url.startsWith('/chat/completions');
+    const isAnthropic = url.startsWith('/v1/messages');
+
+    if (req.method === 'POST' && (isOpenAI || isAnthropic)) {
       try {
         const rawBody = await this.readRequestBody(req);
-        await this.processAndForward(req, res, rawBody, startTime);
+        await this.processAndForward(req, res, rawBody, startTime, isOpenAI);
       } catch (err: any) {
         console.error('Proxy Error:', err.message);
         if (!res.headersSent) {
@@ -156,7 +170,8 @@ export class ProxyServer {
     clientReq: IncomingMessage,
     clientRes: ServerResponse,
     rawBody: string,
-    startTime: number
+    startTime: number,
+    isOpenAI = false
   ): Promise<void> {
     let payload: Record<string, any>;
     try {
@@ -172,43 +187,58 @@ export class ProxyServer {
     // Extract user query from the last user message
     const userQuery = this.extractLastUserQuery(payload.messages);
 
-    // 1. Firewall Check: scan user query
+    // 1. Firewall Check: scan payload & user query
     if (this.config.firewallEnabled) {
-      const scanResult = firewall.scanContent(userQuery);
+      const scanResult = this.firewall.scanPayload(payload, userQuery);
       if (!scanResult.allowed) {
         console.warn(`\x1b[31m🛡️ [ProxyMCP Blocked]: ${scanResult.reason}\x1b[0m`);
         clientRes.writeHead(403, { 'Content-Type': 'application/json' });
-        clientRes.end(
-          JSON.stringify({
-            error: {
-              type: 'forbidden_error',
-              message: `ProxyMCP Context Firewall intercepted request: ${scanResult.reason}`
-            }
-          })
-        );
+
+        if (isOpenAI) {
+          clientRes.end(
+            JSON.stringify({
+              error: {
+                message: `ProxyMCP Context Firewall intercepted request: ${scanResult.reason}`,
+                type: 'invalid_request_error',
+                code: 'context_firewall_blocked'
+              }
+            })
+          );
+        } else {
+          clientRes.end(
+            JSON.stringify({
+              error: {
+                type: 'forbidden_error',
+                message: `ProxyMCP Context Firewall intercepted request: ${scanResult.reason}`
+              }
+            })
+          );
+        }
+
         telemetry.recordTurn({
           inboundTokens,
           outboundTokens: 0,
           latencyMs: Date.now() - startTime,
-          activeTools: payload.tools?.length || 0,
-          blockedViolations: 1
+          activeTools: (payload.tools?.length || payload.functions?.length || 0),
+          blockedViolations: 1,
+          status: 'BLOCKED',
+          reason: scanResult.reason
         });
         return;
       }
     }
 
-    let activeToolsCount = payload.tools?.length || 0;
+    let activeToolsCount = (payload.tools?.length || payload.functions?.length || 0);
     let cacheHitPreserved = true;
 
     // 2. Optimization (if mode is not passthrough)
     if (this.config.mode !== 'passthrough') {
-      // Prune System Prompt (preserve static prefix)
+      // Anthropic style: payload.system
       if (typeof payload.system === 'string') {
         const pruneResult = contextPruner.pruneSystemPrompt(payload.system, userQuery);
         payload.system = pruneResult.prunedSystem;
         cacheHitPreserved = pruneResult.cachePrefixPreserved;
       } else if (Array.isArray(payload.system)) {
-        // Anthropic array format: [{ type: 'text', text: '...' }]
         payload.system = payload.system.map((item: any) => {
           if (item?.type === 'text' && typeof item.text === 'string') {
             const res = contextPruner.pruneSystemPrompt(item.text, userQuery);
@@ -219,11 +249,37 @@ export class ProxyServer {
         });
       }
 
-      // Prune Tools
+      // OpenAI style: messages with role === 'system' or 'developer'
+      if (Array.isArray(payload.messages)) {
+        for (const msg of payload.messages) {
+          if (msg && (msg.role === 'system' || msg.role === 'developer')) {
+            if (typeof msg.content === 'string') {
+              const res = contextPruner.pruneSystemPrompt(msg.content, userQuery);
+              msg.content = res.prunedSystem;
+              cacheHitPreserved = cacheHitPreserved && res.cachePrefixPreserved;
+            } else if (Array.isArray(msg.content)) {
+              msg.content = msg.content.map((item: any) => {
+                if (item?.type === 'text' && typeof item.text === 'string') {
+                  const res = contextPruner.pruneSystemPrompt(item.text, userQuery);
+                  cacheHitPreserved = cacheHitPreserved && res.cachePrefixPreserved;
+                  return { ...item, text: res.prunedSystem };
+                }
+                return item;
+              });
+            }
+          }
+        }
+      }
+
+      // Prune Tools (Anthropic or OpenAI function format)
       if (Array.isArray(payload.tools) && payload.tools.length > 0) {
-        const toolPruneResult = toolPruner.pruneTools(payload.tools, userQuery);
+        const toolPruneResult = this.toolPruner.pruneTools(payload.tools, userQuery);
         payload.tools = toolPruneResult.prunedTools;
         activeToolsCount = payload.tools.length;
+      } else if (Array.isArray(payload.functions) && payload.functions.length > 0) {
+        const funcPruneResult = this.toolPruner.pruneTools(payload.functions, userQuery);
+        payload.functions = funcPruneResult.prunedTools;
+        activeToolsCount = payload.functions.length;
       }
     }
 
@@ -232,8 +288,20 @@ export class ProxyServer {
     const outboundTokens = estimateTokens(optimizedBody);
     const isStreaming = Boolean(payload.stream);
 
-    // Forward to upstream Anthropic API
-    const upstreamUrl = new URL(clientReq.url || '/v1/messages', this.config.upstreamBaseUrl);
+    // Determine target upstream API
+    let upstreamBase = this.config.upstreamBaseUrl;
+    if (isOpenAI) {
+      if (
+        this.config.openaiUpstreamBaseUrl &&
+        (this.config.upstreamBaseUrl === 'https://api.anthropic.com' ||
+          this.config.openaiUpstreamBaseUrl !== 'https://api.openai.com')
+      ) {
+        upstreamBase = this.config.openaiUpstreamBaseUrl;
+      }
+    }
+
+    const defaultEndpoint = isOpenAI ? '/v1/chat/completions' : '/v1/messages';
+    const upstreamUrl = this.resolveUpstreamUrl(upstreamBase, clientReq.url || defaultEndpoint);
     const transport = upstreamUrl.protocol === 'https:' ? https : http;
 
     const forwardHeaders: Record<string, any> = { ...clientReq.headers };
@@ -255,14 +323,66 @@ export class ProxyServer {
           outboundTokens,
           latencyMs,
           activeTools: activeToolsCount,
-          cacheHit: cacheHitPreserved
+          cacheHit: cacheHitPreserved,
+          status: 'OPTIMIZED'
         });
 
         if (isStreaming) {
-          pipeSSEStream(upstreamRes, clientRes);
+          pipeSSEStream(upstreamRes, clientRes, {
+            firewallScan: this.config.firewallEnabled
+              ? (name, input) => this.firewall.scanToolCall(name, input)
+              : undefined,
+            onViolation: (reason) => {
+              telemetry.recordTurn({
+                inboundTokens,
+                outboundTokens: 0,
+                latencyMs: Date.now() - startTime,
+                activeTools: activeToolsCount,
+                blockedViolations: 1,
+                status: 'BLOCKED',
+                reason
+              });
+            }
+          });
         } else {
-          clientRes.writeHead(upstreamRes.statusCode || 200, upstreamRes.headers);
-          upstreamRes.pipe(clientRes);
+          const resChunks: Buffer[] = [];
+          upstreamRes.on('data', (c) => resChunks.push(Buffer.from(c)));
+          upstreamRes.on('end', () => {
+            const rawResponse = Buffer.concat(resChunks).toString('utf-8');
+            if (this.config.firewallEnabled && (upstreamRes.statusCode || 200) < 300) {
+              try {
+                const responseJson = JSON.parse(rawResponse);
+                const scan = this.firewall.scanResponse(responseJson);
+                if (!scan.allowed) {
+                  console.warn(`\x1b[31m🛡️ [ProxyMCP Blocked Outbound Tool Call]: ${scan.reason}\x1b[0m`);
+                  clientRes.writeHead(403, { 'Content-Type': 'application/json' });
+                  clientRes.end(
+                    JSON.stringify({
+                      error: {
+                        type: 'forbidden_error',
+                        message: `ProxyMCP Context Firewall intercepted outbound tool call: ${scan.reason}`
+                      }
+                    })
+                  );
+                  telemetry.recordTurn({
+                    inboundTokens,
+                    outboundTokens: 0,
+                    latencyMs: Date.now() - startTime,
+                    activeTools: activeToolsCount,
+                    blockedViolations: 1,
+                    status: 'BLOCKED',
+                    reason: scan.reason
+                  });
+                  return;
+                }
+              } catch {
+                // If not JSON, pass through
+              }
+            }
+
+            clientRes.writeHead(upstreamRes.statusCode || 200, upstreamRes.headers);
+            clientRes.end(rawResponse);
+          });
         }
       }
     );
@@ -279,8 +399,21 @@ export class ProxyServer {
     upstreamReq.end();
   }
 
+  private resolveUpstreamUrl(baseUrl: string, reqUrl: string): URL {
+    const base = new URL(baseUrl);
+    const basePath = base.pathname.replace(/\/+$/, '');
+    const cleanReq = reqUrl.replace(/^\/+/, '');
+
+    if (basePath.endsWith('/v1') && cleanReq.startsWith('v1/')) {
+      return new URL(`${basePath}/${cleanReq.slice(3)}`, base.origin);
+    }
+
+    const combined = basePath ? `${basePath}/${cleanReq}` : `/${cleanReq}`;
+    return new URL(combined, base.origin);
+  }
+
   private forwardDirect(clientReq: IncomingMessage, clientRes: ServerResponse, rawBody: string): void {
-    const upstreamUrl = new URL(clientReq.url || '/', this.config.upstreamBaseUrl);
+    const upstreamUrl = this.resolveUpstreamUrl(this.config.upstreamBaseUrl, clientReq.url || '/');
     const transport = upstreamUrl.protocol === 'https:' ? https : http;
 
     const headers: Record<string, any> = { ...clientReq.headers };
