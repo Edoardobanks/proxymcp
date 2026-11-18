@@ -7,6 +7,7 @@ import { toolPruner } from '../optimizer/tool-pruner.js';
 import { firewall } from '../firewall/guardrail.js';
 import { telemetry } from '../telemetry/logger.js';
 import { pipeSSEStream } from './streaming.js';
+import { renderDashboardHtml } from '../dashboard/html.js';
 
 export class ProxyServer {
   private config: ProxyConfig;
@@ -26,6 +27,7 @@ export class ProxyServer {
         console.log(`\x1b[32m✔ ProxyMCP active on http://${this.config.host}:${this.config.port}\x1b[0m`);
         console.log(`✔ Upstream API target: ${this.config.upstreamBaseUrl}`);
         console.log(`✔ Mode: \x1b[36m${this.config.mode}\x1b[0m | Firewall: \x1b[36m${this.config.firewallEnabled ? 'ON' : 'OFF'}\x1b[0m`);
+        console.log(`✔ Live Web UI Dashboard: \x1b[35mhttp://${this.config.host}:${this.config.port}/dashboard\x1b[0m`);
         resolve();
       });
     });
@@ -52,6 +54,34 @@ export class ProxyServer {
     const startTime = Date.now();
     const url = req.url || '/';
 
+    // Dashboard Web UI
+    if (req.method === 'GET' && (url === '/dashboard' || url === '/dashboard/')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(renderDashboardHtml(telemetry.getSummary(), this.config.port, this.config.host, this.config.mode));
+      return;
+    }
+
+    // Live Server-Sent Events (SSE) telemetry stream for dashboard
+    if (req.method === 'GET' && (url === '/api/events' || url === '/events')) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive'
+      });
+      res.write(`data: ${JSON.stringify({ type: 'init', data: telemetry.getSummary() })}\n\n`);
+
+      const unsubscribe = telemetry.subscribe((event) => {
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
+        }
+      });
+
+      req.on('close', () => {
+        unsubscribe();
+      });
+      return;
+    }
+
     // Health & Stats endpoints
     if (req.method === 'GET' && (url === '/health' || url === '/')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -59,9 +89,46 @@ export class ProxyServer {
       return;
     }
 
-    if (req.method === 'GET' && url === '/stats') {
+    if (req.method === 'GET' && (url === '/stats' || url === '/api/stats')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(telemetry.getSummary()));
+      return;
+    }
+
+    // Interactive Dashboard Simulation & Testing actions
+    if (req.method === 'POST' && url === '/api/test-turn') {
+      const turn = telemetry.recordTurn({
+        inboundTokens: 41920,
+        outboundTokens: 1280,
+        latencyMs: 0.82,
+        activeTools: 3,
+        cacheHit: true,
+        status: 'OPTIMIZED'
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', turn, summary: telemetry.getSummary() }));
+      return;
+    }
+
+    if (req.method === 'POST' && url === '/api/test-firewall') {
+      const turn = telemetry.recordTurn({
+        inboundTokens: 1540,
+        outboundTokens: 0,
+        latencyMs: 0.21,
+        activeTools: 1,
+        blockedViolations: 1,
+        status: 'BLOCKED',
+        reason: 'Blocked potentially catastrophic command: rm -rf /'
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', turn, summary: telemetry.getSummary() }));
+      return;
+    }
+
+    if (req.method === 'POST' && url === '/api/reset') {
+      telemetry.reset();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', message: 'Telemetry reset' }));
       return;
     }
 

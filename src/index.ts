@@ -5,3 +5,4 @@ export * from './firewall/guardrail.js';
 export * from './telemetry/logger.js';
 export * from './proxy/streaming.js';
 export * from './proxy/server.js';
+export * from './dashboard/html.js';

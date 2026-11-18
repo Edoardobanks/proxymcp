@@ -190,14 +190,18 @@ PROXYMCP_CONFIG=/path/to/mcp.json
 
 ---
 
-## Telemetry & Live Stats
+## Live Web UI Dashboard & Telemetry
 
-Check accumulated token savings, latency overhead, and firewall interceptions at any time:
+ProxyMCP includes an embedded local dashboard with zero external dependencies. Start the proxy and open:
 
-```bash
-# Query the local telemetry endpoint
-curl http://127.0.0.1:8080/stats
+```text
+http://localhost:8080/dashboard
 ```
+
+- **Live SSE Token Stream:** Real-time visual comparison of raw inbound tokens vs. pruned outbound tokens.
+- **Turn-by-Turn Audit Log:** Full log of every intercepted turn, latency overhead, and cache-prefix hit status.
+- **Interactive Simulation:** Instant buttons to simulate Turn 0 token optimizations and test firewall blocks.
+- **JSON Telemetry Endpoint:** Query raw metrics anytime via `curl http://127.0.0.1:8080/stats`.
 
 Example JSON response:
 
@@ -268,8 +272,8 @@ npm run dev
 ## Roadmap
 
 - [x] **Milestone 1:** Transparent HTTP reverse proxy, cache-aware context pruner, tool pruner, execution firewall, and MCP config auto-discovery.
-- [ ] **Milestone 2:** Viral Launch (Show HN, side-by-side terminal demo video, automated GitHub release pipeline).
-- [ ] **Milestone 3:** Embedded Local Web UI Dashboard (`http://localhost:8080/dashboard`) with real-time token stream visualizer.
+- [x] **Milestone 2:** Embedded Local Web UI Dashboard (`http://localhost:8080/dashboard`) with real-time token stream visualizer.
+- [ ] **Milestone 3:** Viral Launch (Show HN, side-by-side terminal demo video, automated GitHub release pipeline).
 - [ ] **Milestone 4:** Enterprise Team Gateway with centralized policy management and audit trails.
 
 ---
