@@ -1,7 +1,7 @@
 {
   "name": "proxymcp",
   "version": "0.1.0",
-  "description": "Zero-config local proxy for Claude Code, Cursor, and AGY that cuts Turn 0 prompt bloat from unused skills and tool sprawl, maintains byte-static cache prefixes, and rehydrates tools on demand",
+  "description": "Local HTTP reverse proxy for Claude Code & AI coding agents that cuts Turn 0 prompt and tool bloat while preserving prompt cache prefixes",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

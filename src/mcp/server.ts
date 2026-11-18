@@ -96,7 +96,7 @@ export function createMcpServer(): Server {
     {
       name: 'proxymcp_telemetry_stats',
       description:
-        'Returns the live ProxyMCP session telemetry odometer: total turns, tokens saved, latency overhead, and blocked firewall violations.',
+        'Returns the live ProxyMCP session telemetry odometer: total turns, tokens saved, latency overhead, and prompt cache status.',
       inputSchema: {
         type: 'object',
         properties: {}

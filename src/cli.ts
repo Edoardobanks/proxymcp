@@ -16,7 +16,7 @@ function printHelp() {
   console.log(`Usage:
   proxymcp start [options]       Start the local reverse proxy
   proxymcp exec -- <cmd> [args]  Start proxy and run command with ANTHROPIC_BASE_URL and OPENAI_BASE_URL set
-  proxymcp mcp                   Run as an MCP stdio server (connect via agy mcp add)
+  proxymcp mcp                   Run as an MCP stdio server
   proxymcp stats                 View telemetry stats
   proxymcp --help                Show this help message
 
@@ -32,7 +32,7 @@ Options:
 Examples:
   npx proxymcp start
   npx proxymcp exec -- claude
-  npx proxymcp exec -- agy
+  npx proxymcp exec -- aider
 `);
 }
 
