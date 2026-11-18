@@ -41,6 +41,7 @@ export class ToolPruner {
   private maxActiveTools: number;
   private coreToolVerbs: Set<string>;
   private dependencies: Map<string, string[]>;
+  private toolRegistry = new Map<string, ToolDefinition>();
 
   constructor(options?: {
     maxActiveTools?: number;
@@ -63,13 +64,39 @@ export class ToolPruner {
   }
 
   /**
+   * Registers tool schemas into the registry for on-demand rehydration
+   */
+  registerTools(tools: ToolDefinition[]): void {
+    if (!tools) return;
+    for (const tool of tools) {
+      const name = getToolName(tool);
+      if (name) {
+        this.toolRegistry.set(name, tool);
+      }
+    }
+  }
+
+  /**
+   * Retrieves an original tool definition by name for rehydration
+   */
+  getToolDefinition(name: string): ToolDefinition | undefined {
+    return this.toolRegistry.get(name);
+  }
+
+  /**
    * Sets a DAG dependency rule (e.g. 'refund_payment' requires ['lookup_customer', 'get_transaction'])
    */
   setDependency(tool: string, prerequisites: string[]) {
     this.dependencies.set(tool, prerequisites);
   }
 
-  pruneTools(tools: ToolDefinition[], userQuery: string): ToolPruneResult {
+  pruneTools(
+    tools: ToolDefinition[],
+    userQuery: string,
+    sessionActiveTools?: Set<string>
+  ): ToolPruneResult {
+    this.registerTools(tools);
+
     if (!tools || tools.length <= this.maxActiveTools) {
       const tokens = this.calculateToolsTokens(tools);
       return {
@@ -92,7 +119,9 @@ export class ToolPruner {
 
     for (const tool of tools) {
       const name = getToolName(tool);
-      if (this.coreToolVerbs.has(name)) {
+      if (sessionActiveTools?.has(name)) {
+        matchedTools.push(tool);
+      } else if (this.coreToolVerbs.has(name)) {
         coreTools.push(tool);
       } else if (this.isToolRelevant(tool, queryTerms)) {
         matchedTools.push(tool);
@@ -122,12 +151,14 @@ export class ToolPruner {
       }
     }
 
-    // Assemble pruned set: core tools + matched tools (including DAG dependencies)
-    const selectedTools: ToolDefinition[] = [...coreTools, ...matchedTools];
+    // Strictly enforce maxActiveTools cap on selected tools
+    const candidateTools = [...matchedTools, ...coreTools];
+    let selectedTools: ToolDefinition[] = [];
 
-    // If NO tools were matched at all, provide up to maxActiveTools fallback tools
-    if (selectedTools.length === 0 && otherTools.length > 0) {
-      selectedTools.push(...otherTools.slice(0, this.maxActiveTools));
+    if (candidateTools.length > 0) {
+      selectedTools = candidateTools.slice(0, this.maxActiveTools);
+    } else if (otherTools.length > 0) {
+      selectedTools = otherTools.slice(0, this.maxActiveTools);
     }
 
     // Invert to find omitted tools

@@ -18,37 +18,26 @@ describe('MCP Server Integration', () => {
     const names = result.tools.map((t: any) => t.name);
     expect(names).toContain('proxymcp_optimize_context');
     expect(names).toContain('proxymcp_prune_tools');
-    expect(names).toContain('proxymcp_firewall_scan');
+    expect(names).toContain('proxymcp_request_capability');
     expect(names).toContain('proxymcp_telemetry_stats');
   });
 
-  it('scans and blocks dangerous commands via proxymcp_firewall_scan', async () => {
+  it('requests capability on demand via proxymcp_request_capability', async () => {
     const server = createMcpServer();
     const handlers = (server as any)._requestHandlers;
     const callFn = handlers.get(CallToolRequestSchema.shape.method.value);
 
-    // Safe command
-    const safeRes = await callFn({
+    const res = await callFn({
       method: 'tools/call',
       params: {
-        name: 'proxymcp_firewall_scan',
-        arguments: { content: 'git status && npm test' }
+        name: 'proxymcp_request_capability',
+        arguments: { requested_tools: ['stripe_charge', 'stripe_refund'] }
       }
     });
-    const safeJson = JSON.parse(safeRes.content[0].text);
-    expect(safeJson.allowed).toBe(true);
-
-    // Dangerous command
-    const dangerousRes = await callFn({
-      method: 'tools/call',
-      params: {
-        name: 'proxymcp_firewall_scan',
-        arguments: { content: 'sudo rm -rf / --no-preserve-root' }
-      }
-    });
-    const dangerousJson = JSON.parse(dangerousRes.content[0].text);
-    expect(dangerousJson.allowed).toBe(false);
-    expect(dangerousJson.reason).toContain('catastrophic command');
+    const json = JSON.parse(res.content[0].text);
+    expect(json.status).toBe('success');
+    expect(json.activated_tools).toContain('stripe_charge');
+    expect(json.activated_tools).toContain('stripe_refund');
   });
 
   it('prunes bloated prompt via proxymcp_optimize_context', async () => {

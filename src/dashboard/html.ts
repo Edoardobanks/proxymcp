@@ -465,7 +465,7 @@ export function renderDashboardHtml(initialStats: any, port = 8080, host = '127.
         <div class="brand-icon">⚡</div>
         <div>
           <h1>ProxyMCP Context Gateway</h1>
-          <p>Local-First Reverse Proxy & Agent Security Firewall</p>
+          <p>Local-First Prompt Optimization & Dynamic Tool Gateway</p>
         </div>
       </div>
 
@@ -507,11 +507,11 @@ export function renderDashboardHtml(initialStats: any, port = 8080, host = '127.
 
       <div class="kpi-card">
         <div class="kpi-label">
-          <span>Threats Intercepted</span>
-          <span class="highlight-red">🛡️</span>
+          <span>Cache Preservation</span>
+          <span class="highlight-purple">🎯</span>
         </div>
-        <div class="kpi-value highlight-red" id="kpi-blocked">0</div>
-        <div class="kpi-subtext">Catastrophic bash & SQL blocked</div>
+        <div class="kpi-value highlight-purple" id="kpi-cache">100.0%</div>
+        <div class="kpi-subtext">Byte-static prefix cache preserved</div>
       </div>
     </div>
 
@@ -547,9 +547,6 @@ export function renderDashboardHtml(initialStats: any, port = 8080, host = '127.
     <div class="action-bar">
       <button class="btn btn-primary" onclick="simulateTurn()">
         ⚡ Simulate Turn 0 Optimization (42k → 1.2k tokens)
-      </button>
-      <button class="btn btn-danger" onclick="simulateFirewall()">
-        🛡️ Test Firewall Trigger ('rm -rf /')
       </button>
       <button class="btn" onclick="resetTelemetry()">
         🔄 Reset Session Stats
@@ -641,7 +638,8 @@ export function renderDashboardHtml(initialStats: any, port = 8080, host = '127.
       document.getElementById('kpi-percent').textContent = (summary.savingsPercentage || '0.0%') + ' average reduction';
       document.getElementById('kpi-cost').textContent = summary.estimatedCostSavings || '$0.0000';
       document.getElementById('kpi-latency').textContent = (summary.averageLatencyMs || 0.8) + ' ms';
-      document.getElementById('kpi-blocked').textContent = summary.totalBlockedViolations || 0;
+      const cacheEl = document.getElementById('kpi-cache');
+      if (cacheEl) cacheEl.textContent = summary.cacheHitPreservedRate || '100.0%';
       document.getElementById('live-turn-indicator').textContent = 'Total Turns: ' + (summary.totalTurns || 0);
 
       // Update Visualizer Bar
@@ -759,15 +757,6 @@ export function renderDashboardHtml(initialStats: any, port = 8080, host = '127.
         const data = await res.json();
       } catch (err) {
         console.error('Simulate turn failed:', err);
-      }
-    }
-
-    async function simulateFirewall() {
-      try {
-        const res = await fetch('/api/test-firewall', { method: 'POST' });
-        const data = await res.json();
-      } catch (err) {
-        console.error('Simulate firewall failed:', err);
       }
     }
 

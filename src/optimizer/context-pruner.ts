@@ -34,6 +34,12 @@ export function extractMeaningfulTerms(query: string): string[] {
     .filter((term) => term.length >= 3 && !STOP_WORDS.has(term));
 }
 
+export const CRITICAL_RULE_PATTERNS = [
+  /\b(?:never|always|do not|must not|prohibited|forbidden)\b/i,
+  /\b(?:security|compliance|zero-trust|credentials?|passwords?|secret|api[_-]?key)\b/i,
+  /\b(?:database migrations?|production|prod|financial|audit)\b/i
+];
+
 export class ContextPruner {
   private staticPrefixLength: number;
 
@@ -166,6 +172,23 @@ export class ContextPruner {
     return result;
   }
 
+  private isCriticalRule(content: string, rulePath: string): boolean {
+    const combined = `${rulePath}\n${content}`;
+    return CRITICAL_RULE_PATTERNS.some((pattern) => pattern.test(combined));
+  }
+
+  private isRuleRelevant(rulePath: string, content: string, queryTerms: string[]): boolean {
+    if (queryTerms.length === 0) return true;
+
+    const pathLower = rulePath.toLowerCase();
+    const contentLower = content.toLowerCase();
+
+    return queryTerms.some((term) => {
+      if (GENERIC_DEV_TERMS.has(term)) return false;
+      return pathLower.includes(term) || contentLower.includes(term);
+    });
+  }
+
   private isItemRelevant(itemText: string, queryTerms: string[], itemName?: string): boolean {
     if (queryTerms.length === 0) return false;
 
@@ -195,12 +218,31 @@ export class ContextPruner {
   private pruneRuleBlocks(fullText: string, queryTerms: string[]): string {
     // Matches XML-style <RULE[...]>[content]</RULE[...]>
     return fullText.replace(/<RULE\[(.*?)\]>([\s\S]*?)<\/RULE\[\1\]>/g, (match, rulePath, content) => {
-      // If rule is substantial (>500 chars) and not explicitly relevant to query terms, condense it
-      if (content.length > 500 && !this.isItemRelevant(match, queryTerms)) {
+      // 1. Invariant safety & compliance rules must NEVER be pruned
+      if (this.isCriticalRule(content, rulePath)) {
+        return match;
+      }
+
+      // 2. If the user query is relevant to any part of the rule content, keep it
+      if (this.isRuleRelevant(rulePath, content, queryTerms)) {
+        return match;
+      }
+
+      // 3. For long (>500 chars), non-critical, non-matched rules, condense into a structured summary
+      if (content.length > 500) {
         const titleMatch = content.match(/^#+\s*(.+)$/m);
         const title = titleMatch ? titleMatch[1].trim() : rulePath;
-        return `<!-- [ProxyMCP Pruned Rule]: ${title} (${rulePath}) - loaded on demand -->`;
+        const keyPoints = content
+          .split('\n')
+          .filter((line: string) => /^\s*(?:[-*]|\d+\.)\s+/.test(line))
+          .slice(0, 3)
+          .map((l: string) => l.trim().replace(/^[-*\d.]+\s*/, ''))
+          .join('; ');
+        const summary = keyPoints ? ` Key topics: ${keyPoints}.` : '';
+
+        return `<RULE[${rulePath}]>\n# ${title}\n<!-- [ProxyMCP Condensed Rule]: Full guidelines retained in repository files.${summary} -->\n</RULE[${rulePath}]>`;
       }
+
       return match;
     });
   }

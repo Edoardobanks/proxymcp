@@ -1,7 +1,7 @@
 {
   "name": "proxymcp",
   "version": "0.1.0",
-  "description": "Zero-config local proxy for Claude Code, Cursor, and AGY that cuts prompt token costs by up to 87%, maintains byte-static cache prefixes, and prevents catastrophic commands",
+  "description": "Zero-config local proxy for Claude Code, Cursor, and AGY that cuts Turn 0 prompt bloat from unused skills and tool sprawl, maintains byte-static cache prefixes, and rehydrates tools on demand",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -14,12 +14,14 @@
     "dev": "tsx src/cli.ts start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "benchmark": "tsx scripts/benchmark.ts"
+    "benchmark": "tsx scripts/benchmark.ts",
+    "live-check": "tsx scripts/live-token-check.ts",
+    "prompt": "tsx scripts/interactive-prompt.ts",
+    "test:session": "tsx scripts/test-agent-session.ts"
   },
   "keywords": [
     "mcp",
     "claude-code",
-    "context-firewall",
     "prompt-caching",
     "token-optimizer",
     "reverse-proxy"

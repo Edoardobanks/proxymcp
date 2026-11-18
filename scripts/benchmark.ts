@@ -211,8 +211,12 @@ function generateRealisticTools(): ToolDefinition[] {
 export function runBenchmark() {
   console.log(`
 \x1b[35m┌─────────────────────────────────────────────────────────────────┐
-│     ⚡ ProxyMCP Benchmark Suite: Claude Code Turn 0 Simulation   │
+│  ⚡ ProxyMCP Worst-Case Turn 0 Prompt Bloat Synthetic Benchmark  │
+│  (Simulation: 35 Installed Skills + 12 Enterprise Rules + Tools)│
 └─────────────────────────────────────────────────────────────────┘\x1b[0m
+  * Note: This benchmark measures worst-case initial prompt bloat in an agent
+    environment heavily loaded with enterprise skills, rules, and MCP tools.
+    Real-world savings depend on catalog size (typically 30%–70% on Turn 0).
 `);
 
   const staticPrefix = `You are Claude Code, an expert software engineering agent built by Anthropic.\nFollow all project rules, write clean code, and verify before completing.\n`.repeat(5);

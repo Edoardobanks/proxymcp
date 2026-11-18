@@ -34,6 +34,50 @@ describe('ContextPruner', () => {
     expect(result.prunedSystem).toBe(shortPrompt);
     expect(result.tokensSaved).toBe(0);
   });
+
+  it('never prunes critical invariant safety and compliance rules', () => {
+    const prompt = `System Prefix
+<RULE[/rules/db-safety.md]>
+# Database Modification Guidelines
+Never modify production database migrations without explicit approval.
+Always run migrations in dry-run mode first.
+All queries must be parameterized to prevent SQL injection.
+${'Additional safety requirements and validation steps.\n'.repeat(25)}
+</RULE[/rules/db-safety.md]>
+<RULE[/rules/irrelevant-k8s.md]>
+# Kubernetes Helm Chart Deployment
+Detailed guide on configuring Kubernetes Helm values and secrets across staging clusters.
+${'Deploy pods with replica sets.\n'.repeat(30)}
+</RULE[/rules/irrelevant-k8s.md]>`;
+
+    // Query is purely about CSS styling
+    const result = pruner.pruneSystemPrompt(prompt, 'Fix button color to blue in CSS');
+
+    // DB safety rule contains "Never" and "Always" -> must remain 100% INTACT
+    expect(result.prunedSystem).toContain('Never modify production database migrations');
+    expect(result.prunedSystem).toContain('All queries must be parameterized');
+
+    // Irrelevant K8s rule should be condensed
+    expect(result.prunedSystem).toContain('<!-- [ProxyMCP Condensed Rule]: Full guidelines retained in repository files.');
+  });
+
+  it('inspects full rule content for query relevance instead of just the first line', () => {
+    const prompt = `System Prefix
+<RULE[/guidelines/misc-utils.md]>
+# General Utility Library Documentation
+This document outlines miscellaneous internal utilities and helper scripts.
+${'Miscellaneous helper notes.\n'.repeat(20)}
+Special section on stripe_payment_webhook handling and signature verification.
+${'More helper documentation.\n'.repeat(20)}
+</RULE[/guidelines/misc-utils.md]>`;
+
+    // The keyword "stripe_payment_webhook" is in the middle of the rule content, NOT in the filename or first line
+    const result = pruner.pruneSystemPrompt(prompt, 'How do I handle stripe_payment_webhook?');
+
+    // Rule content must be kept because the body contains the query keyword!
+    expect(result.prunedSystem).toContain('Special section on stripe_payment_webhook handling');
+    expect(result.prunedSystem).not.toContain('<!-- [ProxyMCP Condensed Rule]');
+  });
 });
 
 describe('ToolPruner', () => {
@@ -175,5 +219,31 @@ describe('ToolPruner', () => {
     expect(result.omittedToolNames).toContain('slack_notifier');
     expect(result.omittedToolNames).toContain('k8s_cluster_manager');
     expect(result.omittedToolNames).toContain('datadog_metrics_export');
+  });
+
+  it('strictly enforces maxActiveTools limit and supports tool registration and rehydration', () => {
+    const pruner = new ToolPruner({ maxActiveTools: 2 });
+
+    const tools = [
+      { name: 'read_file', description: 'Read file' },
+      { name: 'edit_file', description: 'Edit file' },
+      { name: 'write_file', description: 'Write file' },
+      { name: 'stripe_charge', description: 'Charge customer credit card' },
+      { name: 'stripe_refund', description: 'Refund customer credit card' }
+    ];
+
+    const result = pruner.pruneTools(tools, 'Can you charge with stripe?');
+
+    // maxActiveTools is 2 (+ 1 meta-tool = max 3 tools exposed)
+    expect(result.prunedTools.length).toBeLessThanOrEqual(3);
+
+    // Verify tools were registered for on-demand rehydration
+    expect(pruner.getToolDefinition('stripe_refund')).toBeDefined();
+    expect(pruner.getToolDefinition('stripe_refund')?.description).toBe('Refund customer credit card');
+
+    // Verify sessionActiveTools preserves rehydrated tools in subsequent turn
+    const activeSet = new Set(['stripe_refund']);
+    const secondTurnResult = pruner.pruneTools(tools, 'Check status', activeSet);
+    expect(secondTurnResult.prunedTools.some((t) => t.name === 'stripe_refund')).toBe(true);
   });
 });

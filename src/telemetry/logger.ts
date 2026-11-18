@@ -1,12 +1,11 @@
 export interface TurnStats {
   turn?: number;
-  status?: 'OPTIMIZED' | 'BLOCKED' | 'PASSTHROUGH';
+  status?: 'OPTIMIZED' | 'PASSTHROUGH';
   inboundTokens: number;
   outboundTokens: number;
   latencyMs: number;
   activeTools: number;
   cacheHit?: boolean;
-  blockedViolations?: number;
   reason?: string;
 }
 
@@ -15,7 +14,7 @@ export interface TurnRecord extends TurnStats {
   timestamp: string;
   tokensSaved: number;
   savingsPercentage: string;
-  status: 'OPTIMIZED' | 'BLOCKED' | 'PASSTHROUGH';
+  status: 'OPTIMIZED' | 'PASSTHROUGH';
 }
 
 export type TelemetryListener = (event: { type: 'turn' | 'init'; data: any; summary: any }) => void;
@@ -25,7 +24,6 @@ export class TelemetryLogger {
   private totalInboundTokens = 0;
   private totalOutboundTokens = 0;
   private totalSavingsTokens = 0;
-  private totalBlocked = 0;
   private totalLatencySum = 0;
   private recentTurns: TurnRecord[] = [];
   private listeners: Set<TelemetryListener> = new Set();
@@ -43,12 +41,8 @@ export class TelemetryLogger {
     this.totalSavingsTokens += savings;
     this.totalLatencySum += stats.latencyMs;
 
-    if (stats.blockedViolations) {
-      this.totalBlocked += stats.blockedViolations;
-    }
-
-    const status: 'OPTIMIZED' | 'BLOCKED' | 'PASSTHROUGH' = stats.status || (
-      stats.blockedViolations ? 'BLOCKED' : (savings > 0 ? 'OPTIMIZED' : 'PASSTHROUGH')
+    const status: 'OPTIMIZED' | 'PASSTHROUGH' = stats.status || (
+      savings > 0 ? 'OPTIMIZED' : 'PASSTHROUGH'
     );
 
     const record: TurnRecord = {
@@ -123,7 +117,6 @@ export class TelemetryLogger {
       savingsPercentage: `${overallSavingsPct}%`,
       estimatedCostSavings: `$${estimatedCostSavings}`,
       averageLatencyMs,
-      totalBlockedViolations: this.totalBlocked,
       cacheHitPreservedRate: '100.0%',
       recentTurns: this.recentTurns
     };
@@ -134,7 +127,6 @@ export class TelemetryLogger {
     this.totalInboundTokens = 0;
     this.totalOutboundTokens = 0;
     this.totalSavingsTokens = 0;
-    this.totalBlocked = 0;
     this.totalLatencySum = 0;
     this.recentTurns = [];
   }

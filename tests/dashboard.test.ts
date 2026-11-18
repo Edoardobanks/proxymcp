@@ -80,19 +80,19 @@ describe('Dashboard Unit Tests', () => {
     expect(events.length).toBe(1);
   });
 
-  it('tracks blocked violations with BLOCKED status', () => {
+  it('tracks passthrough turns when no tokens are saved', () => {
     telemetry.recordTurn({
-      inboundTokens: 2000,
-      outboundTokens: 0,
-      latencyMs: 0.3,
+      inboundTokens: 1000,
+      outboundTokens: 1000,
+      latencyMs: 0.2,
       activeTools: 1,
-      blockedViolations: 1,
-      reason: 'Blocked rm -rf /'
+      cacheHit: true
     });
 
     const summary = telemetry.getSummary();
-    expect(summary.totalBlockedViolations).toBe(1);
-    expect(summary.recentTurns[0].status).toBe('BLOCKED');
+    expect(summary.recentTurns[0].status).toBe('PASSTHROUGH');
+    expect(summary.recentTurns[0].tokensSaved).toBe(0);
+    expect(summary.cacheHitPreservedRate).toBe('100.0%');
   });
 
   it('resets telemetry statistics when reset() is called', () => {

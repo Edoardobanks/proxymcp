@@ -6,7 +6,7 @@ import { discoverMcpConfig } from './config/mcp-discovery.js';
 function printBanner() {
   console.log(`
 \x1b[35m┌────────────────────────────────────────────────────────┐
-│  ⚡ ProxyMCP - Transparent AI Agent Context Firewall   │
+│  ⚡ ProxyMCP - Transparent AI Agent Context Optimizer   │
 └────────────────────────────────────────────────────────┘\x1b[0m
 `);
 }
@@ -28,7 +28,6 @@ Options:
   --mode <mode>                aggressive | balanced | passthrough (default: aggressive)
   --rc <path>                  Path to custom project config (.proxymcprc.json)
   --mcp-config <path>          Path to MCP config file (auto-detects Claude Desktop by default)
-  --no-firewall                Disable destructive action firewall
 
 Examples:
   npx proxymcp start
@@ -54,7 +53,6 @@ export async function main() {
   let mode: 'aggressive' | 'balanced' | 'passthrough' | undefined;
   let mcpConfigPath: string | undefined;
   let rcPath: string | undefined;
-  let firewallEnabled = true;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--port' && args[i + 1]) {
@@ -78,8 +76,6 @@ export async function main() {
     } else if (args[i] === '--mcp-config' && args[i + 1]) {
       mcpConfigPath = args[i + 1];
       i++;
-    } else if (args[i] === '--no-firewall') {
-      firewallEnabled = false;
     }
   }
 
@@ -102,7 +98,6 @@ export async function main() {
       openaiUpstreamBaseUrl: openaiUpstream,
       mode,
       rcPath,
-      firewallEnabled,
       mcpConfigPath: mcpConfig.sourcePath || undefined
     });
     await proxy.start();
@@ -144,7 +139,6 @@ export async function main() {
       openaiUpstreamBaseUrl: openaiUpstream,
       mode,
       rcPath,
-      firewallEnabled,
       mcpConfigPath: mcpConfig.sourcePath || undefined
     });
     await proxy.start();

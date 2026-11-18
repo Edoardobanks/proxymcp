@@ -23,16 +23,16 @@ describe('Project-Level Configuration (.proxymcprc.json)', () => {
   it('discovers .proxymcprc.json in current directory', () => {
     const rcPath = path.join(tempDir, '.proxymcprc.json');
     const policy = {
-      customBlockedPatterns: ['aws\\s+s3\\s+sync'],
-      protectedPaths: ['.env', 'secrets/']
+      mode: 'balanced',
+      maxActiveTools: 5
     };
     fs.writeFileSync(rcPath, JSON.stringify(policy, null, 2));
 
     const result = findProjectRc(tempDir);
     expect(result).not.toBeNull();
     expect(result?.filePath).toBe(rcPath);
-    expect(result?.config.customBlockedPatterns).toContain('aws\\s+s3\\s+sync');
-    expect(result?.config.protectedPaths).toContain('secrets/');
+    expect(result?.config.mode).toBe('balanced');
+    expect(result?.config.maxActiveTools).toBe(5);
   });
 
   it('walks upward to find .proxymcprc.json in parent directories', () => {
@@ -71,8 +71,7 @@ describe('Project-Level Configuration (.proxymcprc.json)', () => {
       JSON.stringify({
         port: 8999,
         mode: 'balanced',
-        customBlockedPatterns: ['rm\\s+-rf\\s+tmp'],
-        protectedPaths: ['.env', '.git', 'credentials.json']
+        maxActiveTools: 6
       })
     );
 
@@ -84,8 +83,7 @@ describe('Project-Level Configuration (.proxymcprc.json)', () => {
 
     expect(config.port).toBe(9005);
     expect(config.mode).toBe('balanced');
-    expect(config.customBlockedPatterns).toContain('rm\\s+-rf\\s+tmp');
-    expect(config.protectedPaths).toContain('credentials.json');
-    expect(config.firewallEnabled).toBe(true); // default preserved
+    expect(config.maxActiveTools).toBe(6);
+    expect(config.host).toBe('127.0.0.1'); // default preserved
   });
 });

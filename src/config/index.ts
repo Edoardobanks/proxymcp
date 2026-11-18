@@ -72,33 +72,8 @@ export const ProxyConfigSchema = z.object({
   mode: z.enum(['aggressive', 'balanced', 'passthrough']).default('aggressive'),
   maxActiveTools: z.number().default(3),
   preservePrefixChars: z.number().default(1500),
-  firewallEnabled: z.boolean().default(true),
   mcpConfigPath: z.string().optional(),
-  rcPath: z.string().optional(),
-  blockedCommands: z.array(z.string()).default([
-    'rm -rf /',
-    'rm -rf ~',
-    'mkfs',
-    'dd if=',
-    ':(){ :|:& };:',
-    '> /dev/sda',
-    'DROP DATABASE',
-    'DROP TABLE',
-    'TRUNCATE TABLE',
-    'chmod -R 777 /'
-  ]),
-  customBlockedPatterns: z.array(z.string()).default([]),
-  protectedPaths: z.array(z.string()).default([
-    '.env',
-    '.env.*',
-    '.git',
-    'id_rsa',
-    'id_ed25519',
-    '*.pem',
-    '*.key'
-  ]),
-  allowedCommands: z.array(z.string()).default([]),
-  commandAllowlistOnly: z.boolean().default(false)
+  rcPath: z.string().optional()
 });
 
 export type ProxyConfig = z.infer<typeof ProxyConfigSchema>;
@@ -115,10 +90,8 @@ export function loadConfig(overrides?: Partial<ProxyConfig>): ProxyConfig {
     openaiUpstreamBaseUrl: process.env.PROXYMCP_OPENAI_UPSTREAM || process.env.OPENAI_BASE_URL || undefined,
     mode: process.env.PROXYMCP_MODE || undefined,
     maxActiveTools: process.env.PROXYMCP_MAX_TOOLS ? parseInt(process.env.PROXYMCP_MAX_TOOLS, 10) : undefined,
-    firewallEnabled: process.env.PROXYMCP_FIREWALL === 'false' ? false : undefined,
     mcpConfigPath: process.env.PROXYMCP_CONFIG || undefined,
-    rcPath: process.env.PROXYMCP_RC || undefined,
-    commandAllowlistOnly: process.env.PROXYMCP_ALLOWLIST_ONLY === 'true' ? true : undefined
+    rcPath: process.env.PROXYMCP_RC || undefined
   };
 
   const cleanObject = (obj?: Record<string, any>) =>

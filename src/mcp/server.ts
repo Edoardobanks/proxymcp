@@ -7,7 +7,6 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ContextPruner } from '../optimizer/context-pruner.js';
 import { ToolPruner, ToolDefinition } from '../optimizer/tool-pruner.js';
-import { ContextFirewall } from '../firewall/guardrail.js';
 import { telemetry } from '../telemetry/logger.js';
 
 export function createMcpServer(): Server {
@@ -25,7 +24,6 @@ export function createMcpServer(): Server {
 
   const contextPruner = new ContextPruner({ staticPrefixLength: 1500 });
   const toolPruner = new ToolPruner({ maxActiveTools: 3 });
-  const firewall = new ContextFirewall();
 
   const TOOLS: Tool[] = [
     {
@@ -76,18 +74,23 @@ export function createMcpServer(): Server {
       }
     },
     {
-      name: 'proxymcp_firewall_scan',
+      name: 'proxymcp_request_capability',
       description:
-        'Scans shell commands, SQL queries, or prompts against the ProxyMCP Zero-Trust Execution Firewall. Detects catastrophic shell commands, destructive database drops, and prompt injections.',
+        'Request additional tool capabilities on demand when an omitted tool is required for the user task.',
       inputSchema: {
         type: 'object',
         properties: {
-          content: {
+          requested_tools: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of tool names to activate into context.'
+          },
+          intent: {
             type: 'string',
-            description: 'The command, code snippet, or prompt to inspect for dangerous patterns.'
+            description: 'Brief reason or action you intend to perform.'
           }
         },
-        required: ['content']
+        required: ['requested_tools']
       }
     },
     {
@@ -175,18 +178,22 @@ export function createMcpServer(): Server {
       };
     }
 
-    if (name === 'proxymcp_firewall_scan') {
-      const { content } = (args || {}) as any;
-      if (typeof content !== 'string') {
-        throw new Error('content must be a string');
-      }
-
-      const scan = firewall.scanContent(content);
+    if (name === 'proxymcp_request_capability') {
+      const { requested_tools } = (args || {}) as any;
+      const toolsList = Array.isArray(requested_tools) ? requested_tools : [];
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(scan, null, 2)
+            text: JSON.stringify(
+              {
+                status: 'success',
+                activated_tools: toolsList,
+                message: `Tool capabilities [${toolsList.join(', ')}] requested and activated for subsequent turns.`
+              },
+              null,
+              2
+            )
           }
         ]
       };
